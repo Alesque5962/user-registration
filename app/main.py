@@ -1,4 +1,4 @@
-import hashlib
+import bcrypt
 from typing import Annotated
 from datetime import datetime, UTC
 from contextlib import asynccontextmanager
@@ -12,6 +12,8 @@ from .services.activation import generate_code, expiration_time
 from .services.mailer import send_activation_email
 from .security import security, verify_basic_auth
 from .db import (
+    init_pool,
+    close_pool,
     wait_for_db,
     create_database_if_not_exists,
     create_users_table_if_not_exists,
@@ -26,8 +28,10 @@ async def lifespan(app: FastAPI):
     """Startup event handler."""
     wait_for_db()
     create_database_if_not_exists()
-    create_users_table_if_not_exists()
+    await init_pool()
+    await create_users_table_if_not_exists()
     yield
+    await close_pool()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -44,14 +48,17 @@ app.add_middleware(
 
 
 @app.post("/register")
-def register(email: str, password: str):
+async def register(email: str, password: str):
     """Register a new user."""
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    bytes = password.encode("utf-8")  # converting password to array of bytes
+    salt = bcrypt.gensalt()  # generating the salt
+    password_hash = bcrypt.hashpw(bytes, salt)  # Hashing the password
+
     code = generate_code()
     expires_at = expiration_time()
 
     try:
-        create_user(email, password_hash, code, expires_at)
+        await create_user(email, password_hash, code, expires_at)
     except UniqueViolation:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -63,12 +70,12 @@ def register(email: str, password: str):
 
 
 @app.post("/activate")
-def activate(
+async def activate(
     code: str,
     credentials: Annotated[HTTPBasicCredentials, Depends(security)],
 ):
     """Activate a user."""
-    user = get_user_by_email(credentials.username)
+    user = await get_user_by_email(credentials.username)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -102,5 +109,5 @@ def activate(
             headers={"WWW-Authenticate": "Basic"},
         )
 
-    activate_user(email)
+    await activate_user(email)
     return {"message": "Account activated"}

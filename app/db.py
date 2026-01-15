@@ -6,6 +6,9 @@ from typing import Tuple
 from datetime import datetime
 from psycopg import OperationalError
 from psycopg.errors import UniqueViolation
+from psycopg_pool import AsyncConnectionPool
+
+pool: AsyncConnectionPool | None = None
 
 
 def wait_for_db(retries: int = 10, delay: int = 2):
@@ -28,6 +31,38 @@ def wait_for_db(retries: int = 10, delay: int = 2):
             time.sleep(delay)
 
     raise RuntimeError("PostgreSQL not available")
+
+
+def make_conninfo() -> str:
+    return (
+        f"host={os.getenv('DB_HOST')} "
+        f"port={os.getenv('DB_PORT', '5432')} "
+        f"dbname={os.getenv('DB_NAME')} "
+        f"user={os.getenv('DB_USER')} "
+        f"password={os.getenv('DB_PASSWORD')}"
+    )
+
+
+async def init_pool():
+    global pool
+    pool = AsyncConnectionPool(
+        conninfo=make_conninfo(),
+        min_size=2,
+        max_size=10,
+        timeout=30,
+        open=True,
+    )
+
+
+async def close_pool():
+    if pool:
+        await pool.close()
+
+
+def get_pool() -> AsyncConnectionPool:
+    if pool is None:
+        raise RuntimeError("Database pool not initialized")
+    return pool
 
 
 def create_database_if_not_exists():
@@ -58,88 +93,58 @@ def create_database_if_not_exists():
     conn.close()
 
 
-def create_users_table_if_not_exists():
+async def create_users_table_if_not_exists():
     """Create the users table if it doesn't exist."""
-    conn = psycopg.connect(
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT", "5432"),
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-    )
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id UUID PRIMARY KEY,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            is_active BOOLEAN NOT NULL DEFAULT FALSE,
-            activation_code TEXT,
-            activation_expires_at TIMESTAMPTZ
-        );
-        """
-    )
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    async with get_pool().connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id UUID PRIMARY KEY,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash BYTEA NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT FALSE,
+                    activation_code TEXT,
+                    activation_expires_at TIMESTAMPTZ
+                );
+                """
+            )
 
     print("[DB] Table 'users' ready")
 
 
-def get_connection():
-    """Get a connection to the database."""
-    return psycopg.connect(
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT", "5432"),
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-    )
-
-
-def create_user(email: str, password_hash: str, code: str, expires_at: datetime):
+async def create_user(email: str, password_hash: str, code: str, expires_at: datetime):
     """Create a new user."""
-    conn = get_connection()
-    cur = conn.cursor()
     try:
-        cur.execute(
-            """
-            INSERT INTO users (id, email, password_hash, activation_code, activation_expires_at)
+        async with get_pool().connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                INSERT INTO users (id, email, password_hash, activation_code, activation_expires_at)
             VALUES (%s, %s, %s, %s, %s)
             """,
-            (str(uuid.uuid4()), email, password_hash, code, expires_at),
-        )
-        conn.commit()
+                    (str(uuid.uuid4()), email, password_hash, code, expires_at),
+                )
     except UniqueViolation:
-        conn.rollback()
         raise
-    finally:
-        cur.close()
-        conn.close()
 
 
-def get_user_by_email(email: str) -> Tuple[str, str, str, bool, str, datetime] | None:
+async def get_user_by_email(
+    email: str,
+) -> Tuple[str, str, str, bool, str, datetime] | None:
     """Get a user by email."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE email=%s", (email,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
+    async with get_pool().connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT * FROM users WHERE email=%s", (email,))
+            row = await cur.fetchone()
     return row
 
 
-def activate_user(email: str):
+async def activate_user(email: str):
     """Activate a user."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE users SET is_active=true WHERE email=%s",
-        (email,),
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
+    async with get_pool().connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "UPDATE users SET is_active=true WHERE email=%s",
+                (email,),
+            )

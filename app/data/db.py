@@ -46,8 +46,9 @@ async def init_pool():
         min_size=get_settings().db_pool_min_size,
         max_size=get_settings().db_pool_max_size,
         timeout=get_settings().db_pool_timeout,
-        open=True,
+        open=False,
     )
+    await pool.open()
 
 
 async def close_pool():

@@ -1,23 +1,16 @@
 import pytest
-from fastapi.testclient import TestClient
-from app.main import app
-from app.db import get_connection
+from unittest.mock import Mock
+from app.data.repositories.user_repository import UserRepository
+from app.services.user_service import UserService
 
 
-@pytest.fixture(scope="session")
-def client():
-    """Create a test client."""
-    with TestClient(app) as client:
-        yield client
+@pytest.fixture
+def mock_repository():
+    """Create a mock repository."""
+    return Mock(spec=UserRepository)
 
 
-@pytest.fixture(autouse=True)
-def cleanup_db():
-    """Cleanup the database."""
-    yield
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM users")
-    conn.commit()
-    cur.close()
-    conn.close()
+@pytest.fixture
+def user_service(mock_repository):
+    """Create a user service with mock repository."""
+    return UserService(mock_repository)

@@ -1,1 +1,1 @@
-# App Package
+"""User Registration API application package."""

@@ -365,15 +365,9 @@ class UserService:
         # Implementation
 ```
 
-### Dependency Inversion Principle (DIP)
+### Liskov Substitution Principle (LSP)
 
-High-level modules depend on abstractions:
-```python
-# Service depends on repository interface, not implementation
-class UserService:
-    def __init__(self, repository: UserRepository):
-        self.repository = repository  # Abstraction, not concrete class
-```
+Subtypes can replace base types without breaking functionality.
 
 ### Interface Segregation Principle (ISP)
 
@@ -386,9 +380,15 @@ class UserRepository:
     async def activate(email: str) -> None: ...
 ```
 
-### Liskov Substitution Principle (LSP)
+### Dependency Inversion Principle (DIP)
 
-Subtypes can replace base types without breaking functionality.
+High-level modules depend on abstractions:
+```python
+# Service depends on repository interface, not implementation
+class UserService:
+    def __init__(self, repository: UserRepository):
+        self.repository = repository  # Abstraction, not concrete class
+```
 
 ---
 

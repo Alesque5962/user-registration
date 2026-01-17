@@ -30,6 +30,7 @@ def wait_for_db(retries: int = 10, delay: int = 2):
 
 
 def make_conninfo() -> str:
+    """Create a connection string for the database."""
     return (
         f"host={get_settings().db_host} "
         f"port={get_settings().db_port} "
@@ -40,6 +41,7 @@ def make_conninfo() -> str:
 
 
 async def init_pool():
+    """Initialize the database connection pool."""
     global pool
     pool = AsyncConnectionPool(
         conninfo=make_conninfo(),
@@ -52,11 +54,13 @@ async def init_pool():
 
 
 async def close_pool():
+    """Close the database connection pool."""
     if pool:
         await pool.close()
 
 
 def get_pool() -> AsyncConnectionPool:
+    """Get the database connection pool."""
     if pool is None:
         raise RuntimeError("Database pool not initialized")
     return pool

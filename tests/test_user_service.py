@@ -25,7 +25,7 @@ async def test_register_user_success(user_service, mock_repository):
         return_value=User(
             id=uuid4(),
             email=email,
-            password_hash=b"hashed",
+            password_hash=b"password123_hashed",
             is_active=False,
             activation_code="1234",
             activation_expires_at=datetime.now(UTC) + timedelta(minutes=1),

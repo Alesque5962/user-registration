@@ -15,3 +15,6 @@ wheels/
 
 # Python version (uv)
 .python-version
+
+# Environment variables
+.env
